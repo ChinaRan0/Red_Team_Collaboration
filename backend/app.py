@@ -15,6 +15,7 @@ import jwt
 from functools import wraps
 import subprocess
 import time
+import shlex
 
 # 禁用SSL警告
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -3661,14 +3662,75 @@ def execute_curl_task(task_id):
                 if not curl_command:
                     raise Exception('curl命令为空')
                 
-                # 执行curl命令
-                result = subprocess.run(
-                    curl_command,
-                    shell=True,
-                    capture_output=True,
-                    text=True,
-                    timeout=300  # 5分钟超时
-                )
+                # 安全地解析和执行curl命令
+                # 使用shlex.split解析命令，避免shell注入
+                try:
+                    # 解析命令行参数
+                    cmd_parts = shlex.split(curl_command)
+                    
+                    # 验证第一个参数必须是curl
+                    if not cmd_parts or cmd_parts[0] not in ['curl', '/usr/bin/curl', '/bin/curl']:
+                        raise Exception('只允许执行curl命令')
+                    
+                    # 检查是否包含危险的shell操作符
+                    dangerous_chars = ['|', '&', ';', '`', '$', '(', ')', '<', '>', '\n', '\r']
+                    for part in cmd_parts:
+                        if any(char in part for char in dangerous_chars):
+                            # 允许URL中的&和?
+                            if not (part.startswith('http://') or part.startswith('https://')):
+                                raise Exception(f'命令中包含不安全的字符: {part}')
+                    
+                    # 白名单：只允许特定的curl参数
+                    allowed_options = {
+                        '-X', '--request',
+                        '-H', '--header',
+                        '-d', '--data', '--data-raw', '--data-binary',
+                        '-u', '--user',
+                        '-A', '--user-agent',
+                        '-e', '--referer',
+                        '-b', '--cookie',
+                        '-L', '--location',
+                        '-k', '--insecure',
+                        '-s', '--silent',
+                        '-S', '--show-error',
+                        '-i', '--include',
+                        '-I', '--head',
+                        '-o', '--output',
+                        '-w', '--write-out',
+                        '-m', '--max-time',
+                        '--connect-timeout',
+                        '--max-redirs',
+                        '-v', '--verbose',
+                        '-x', '--proxy',
+                        '--compressed',
+                        '--json',
+                        '-F', '--form',
+                        '--form-string'
+                    }
+                    
+                    # 验证所有选项都在白名单中
+                    i = 1
+                    while i < len(cmd_parts):
+                        part = cmd_parts[i]
+                        if part.startswith('-'):
+                            # 提取选项名（处理 -X=POST 这种格式）
+                            option = part.split('=')[0]
+                            if option not in allowed_options:
+                                raise Exception(f'不允许的curl参数: {option}')
+                        i += 1
+                    
+                    # 使用列表形式执行命令，不使用shell
+                    result = subprocess.run(
+                        cmd_parts,
+                        shell=False,  # 关键：不使用shell
+                        capture_output=True,
+                        text=True,
+                        timeout=300,  # 5分钟超时
+                        env={'PATH': '/usr/bin:/bin'}  # 限制环境变量
+                    )
+                    
+                except (ValueError, shlex.error) as e:
+                    raise Exception(f'命令解析失败: {str(e)}')
                 
                 if result.returncode != 0:
                     raise Exception(f'curl命令执行失败: {result.stderr}')

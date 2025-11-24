@@ -13,8 +13,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     libxml2-dev \
     libxslt-dev \
+    curl \
     && rm -rf /var/lib/apt/lists/*
-RUN apt-get install curl
 # 复制依赖文件
 COPY requirements.txt .
 

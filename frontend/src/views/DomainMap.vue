@@ -35,7 +35,7 @@
     </div>
 
     <div class="map-content" v-loading="loading" element-loading-background="rgba(255, 255, 255, 0.8)">
-      <div v-if="!selectedDomain && domainList.length > 0" class="domain-overview">
+      <div v-if="!selectedDomain && domainList && domainList.length > 0" class="domain-overview">
         <div class="section-title">
           <h3>项目资产概览</h3>
           <div class="decoration-line"></div>
@@ -160,7 +160,7 @@ export default {
       loading.value = true
       try {
         const response = await request.get(`/projects/${projectId}/domain-map`)
-        domainList.value = response.domain_map
+        domainList.value = response.domain_map || []
       } catch (error) {
         console.error('Load domain map error:', error)
       } finally {

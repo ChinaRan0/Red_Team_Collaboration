@@ -3258,7 +3258,7 @@ def get_domain_map(project_id):
     try:
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT id, asset_type, asset_value, ip, port, protocol, url
+            SELECT id, asset_type, asset_value, ip, port, protocol, url, status, risk_level
             FROM assets
             WHERE project_id = %s
         """, (project_id,))
@@ -3266,50 +3266,97 @@ def get_domain_map(project_id):
         cursor.close()
         conn.close()
         
-        # 构建节点和边
-        nodes = []
-        edges = []
-        node_map = {}
+        # 辅助函数：判断是否为IP
+        def is_ip_addr(s):
+            import re
+            return re.match(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$', s) or ':' in s
+            
+        # 辅助函数：获取主域名
+        def get_root_domain(hostname):
+            if not hostname: return None
+            parts = hostname.split('.')
+            if len(parts) < 2: return hostname
+            
+            # 简单的后缀处理
+            special_suffixes = ['com.cn', 'edu.cn', 'gov.cn', 'org.cn', 'net.cn', 'ac.cn', 'co.uk']
+            if len(parts) >= 3:
+                suffix = '.'.join(parts[-2:])
+                if suffix in special_suffixes:
+                    return '.'.join(parts[-3:])
+            
+            return '.'.join(parts[-2:])
+
+        # 按主域名分组
+        domain_groups = {}
         
         for asset in assets:
-            asset_id = asset['id']
             asset_type = asset['asset_type']
-            asset_value = asset['asset_value']
-            ip = asset['ip']
+            val = asset['asset_value']
             
-            # 创建节点
+            # 提取主机名
+            hostname = None
             if asset_type == 'domain':
-                domain = asset_value.split(':')[0]
-                if domain not in node_map:
-                    node_map[domain] = len(nodes)
-                    nodes.append({
-                        'id': domain,
-                        'label': domain,
-                        'type': 'domain'
-                    })
+                hostname = val.split(':')[0]
+            elif asset_type in ['http', 'https'] and val:
+                try:
+                    # 简单提取 host
+                    temp = val.split('://')[-1]
+                    hostname = temp.split('/')[0].split(':')[0]
+                except:
+                    hostname = None
+            
+            if not hostname or is_ip_addr(hostname):
+                continue
                 
-                # 如果有IP，创建IP节点和边
-                if ip:
-                    if ip not in node_map:
-                        node_map[ip] = len(nodes)
-                        nodes.append({
-                            'id': ip,
-                            'label': ip,
-                            'type': 'ip'
-                        })
-                    edges.append({
-                        'from': domain,
-                        'to': ip,
-                        'label': 'resolves to'
-                    })
+            root = get_root_domain(hostname)
+            if not root: continue
+            
+            if root not in domain_groups:
+                domain_groups[root] = {
+                    'domain': root,
+                    'subdomains': set(),
+                    'ips': set(),
+                    'assets': []
+                }
+            
+            # 添加数据
+            group = domain_groups[root]
+            group['assets'].append({
+                'id': asset['id'],
+                'type': asset['asset_type'],
+                'value': val,
+                'ip': asset['ip'],
+                'status': asset['status'],
+                'risk_level': asset['risk_level']
+            })
+            
+            group['subdomains'].add(hostname)
+            if asset['ip']:
+                group['ips'].add(asset['ip'])
+        
+        # 转换格式
+        domain_map = []
+        for root, group in domain_groups.items():
+            domain_map.append({
+                'domain': root,
+                'subdomain_count': len(group['subdomains']),
+                'ip_count': len(group['ips']),
+                'asset_count': len(group['assets']),
+                'subdomains': list(group['subdomains']),
+                'ips': list(group['ips']),
+                'assets': group['assets']
+            })
+            
+        # 按资产数量排序
+        domain_map.sort(key=lambda x: x['asset_count'], reverse=True)
         
         return jsonify({
             'success': True,
-            'nodes': nodes,
-            'edges': edges
+            'domain_map': domain_map
         })
     
     except Exception as e:
+        print(f"Error in get_domain_map: {e}")
         return jsonify({'success': False, 'message': f'获取域名关系图失败: {str(e)}'}), 500
 
 # ==================== Curl任务管理 ====================

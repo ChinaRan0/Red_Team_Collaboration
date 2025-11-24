@@ -65,12 +65,25 @@ npm run serve
 
 ## 配置
 
-编辑 `.env` 文件配置端口：
+编辑 `docker-compose.yml` 文件配置
 
-```bash
-BACKEND_PORT=15060
-FRONTEND_PORT=8080
-```
+## 截图
+
+![image-20251124103046558](./assets/image-20251124103046558.png)
+
+![image-20251124103102204](./assets/image-20251124103102204.png)
+
+![image-20251124103112316](./assets/image-20251124103112316.png)
+
+![image-20251124103116714](./assets/image-20251124103116714.png)
+
+**![image-20251124104938801](./assets/image-20251124104938801.png)**
+
+![image-20251124103305306](./assets/image-20251124103305306.png)
+
+
+
+
 
 
 ## 生产部署
